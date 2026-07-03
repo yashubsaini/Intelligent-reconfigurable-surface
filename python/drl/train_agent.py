@@ -3,71 +3,70 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from irs_env import IRSEnv
-from ddpg_agent import DDPGAgent
+from sac_agent import SACAgent
 import os
+import torch
 
 def main():
-    print("--- IRS-Sim DRL Training (DDPG) ---")
+    print("--- IRS-Sim DRL Training (SAC) ---")
     
-    # 1. Initialize Environment
-    # We will use an 8x8 panel for faster training proof-of-concept
-    env = IRSEnv(room_size=100.0, num_elements_x=8, num_elements_y=8)
-    
+    # 1. Initialize Environment and Agent
+    env = IRSEnv(room_size=100.0, num_elements_x=16, num_elements_y=16)
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     
-    print(f"State Dimension: {state_dim} (UE X, Y)")
-    print(f"Action Dimension: {action_dim} (IRS Elements)")
-    
-    # 2. Initialize Agent
-    agent = DDPGAgent(state_dim, action_dim)
+    agent = SACAgent(state_dim=state_dim, action_dim=action_dim)
     
     num_episodes = 50
+    batch_size = 64
+    
     rewards_history = []
     
-    # 3. Training Loop
-    print(f"Starting training for {num_episodes} episodes...")
-    for ep in range(num_episodes):
+    print(f"State Dim: {state_dim}, Action Dim: {action_dim}")
+    print("Starting Training Loop...")
+    
+    for episode in range(num_episodes):
         state, _ = env.reset()
         episode_reward = 0
         done = False
-        truncated = False
         
-        # Decay noise over time for exploitation
-        noise_scale = max(0.01, 0.5 * (1.0 - ep/num_episodes))
-        
-        while not (done or truncated):
-            action = agent.get_action(state, noise_scale=noise_scale)
-            next_state, reward, done, truncated, _ = env.step(action)
+        while not done:
+            # SAC inherently explores during training via stochastic policy
+            action = agent.select_action(state, evaluate=False)
             
-            agent.replay_buffer.push(state, action, reward, next_state, done)
+            next_state, reward, done, _, _ = env.step(action)
+            
+            agent.memory.push(state, action, reward, next_state, done)
             
             # Train the network
-            a_loss, c_loss = agent.train()
-            
+            if len(agent.memory) > batch_size:
+                policy_loss, qf_loss = agent.train(batch_size)
+                
             state = next_state
             episode_reward += reward
             
-        avg_reward = episode_reward / env.max_steps
-        rewards_history.append(avg_reward)
-        print(f"Episode: {ep+1}/{num_episodes} | Avg SNR: {avg_reward:.2f} dB | Noise: {noise_scale:.2f}")
-
-    print("Training complete!")
+        rewards_history.append(episode_reward)
+        print(f"Episode {episode+1}/{num_episodes} | Total Reward (Average SNR): {episode_reward:.2f} dB")
+        
+    print("Training Complete!")
     
-    # 4. Save Learning Curve
-    plt.figure(figsize=(10, 5))
-    plt.plot(rewards_history)
-    plt.title('DDPG Agent Learning Curve (Avg SNR per Episode)')
+    # Save the trained Actor network weights
+    save_path = os.path.join(os.path.dirname(__file__), 'sac_actor.pth')
+    torch.save(agent.actor.state_dict(), save_path)
+    print(f"Saved SAC actor weights to: {save_path}")
+    
+    # Plot Learning Curve
+    plt.figure(figsize=(10,5))
+    plt.plot(rewards_history, label='Episode Reward (SNR)', color='cyan')
+    plt.title('SAC Agent Learning Curve (IRS Beamforming)')
     plt.xlabel('Episode')
-    plt.ylabel('Average Received Power (dB)')
-    plt.grid(True)
-    plt.savefig('learning_curve.png', dpi=300, bbox_inches='tight')
-    print("Saved learning curve to 'learning_curve.png'")
+    plt.ylabel('Reward (dB)')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
     
-    # Save model weights
-    import torch
-    torch.save(agent.actor.state_dict(), 'ddpg_actor.pth')
-    print("Saved model weights to 'ddpg_actor.pth'")
+    plot_path = os.path.join(os.path.dirname(__file__), 'learning_curve.png')
+    plt.savefig(plot_path)
+    print(f"Saved learning curve plot to: {plot_path}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

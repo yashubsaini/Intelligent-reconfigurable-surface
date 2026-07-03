@@ -21,7 +21,7 @@ ue_y = st.sidebar.slider("Target UE Y Position (m)", 10, 90, 80)
 
 optimization_mode = st.sidebar.radio(
     "IRS Operation Mode",
-    ("No IRS (Blocked)", "Random Phases", "Mathematical Optimization (2-Bit)", "DRL AI Agent (Inference)")
+    ("No IRS (Blocked)", "Random Phases", "Mathematical Optimization (2-Bit)", "DRL AI Agent (SAC Inference)")
 )
 
 bs_pos = (0, 50, 5)     
@@ -61,7 +61,7 @@ def calculate_heatmap(ue_pos, mode):
         G_t, hr_t, _ = env_target.get_channels(irs_panel.N)
         irs_panel.optimize_phases_continuous(G_t, hr_t)
         irs_panel.set_discrete_phases(num_bits=2)
-    elif mode == "DRL AI Agent (Inference)":
+    elif mode == "DRL AI Agent (SAC Inference)":
         env_target = ChannelEnvironment(bs_pos, irs_pos, ue_pos)
         G_t, hr_t, _ = env_target.get_channels(irs_panel.N)
         irs_panel.optimize_phases_continuous(G_t, hr_t) 
