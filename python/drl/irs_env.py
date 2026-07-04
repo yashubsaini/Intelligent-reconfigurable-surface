@@ -22,13 +22,17 @@ class IRSEnv(gym.Env):
         self.irs_panel = IRSArray(num_elements_x, num_elements_y)
         self.N = self.irs_panel.N
         
-        # State: UE (x, y) coordinates normalized to [0, 1]
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(2,), dtype=np.float32)
+        # State: [ue_x, ue_y, vel_x, vel_y, d_bs, d_irs, prev_snr]
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32)
         
-        # Action: Continuous phases for each element in range [-1, 1] which will map to [-pi, pi]
+        # Action: Continuous delta-phases for each element in range [-1, 1]
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.N,), dtype=np.float32)
         
         self.ue_pos = None
+        self.ue_velocity = None
+        self.current_phases = np.zeros(self.N, dtype=np.float32)
+        self.prev_snr_db = 0.0
+        
         self.env_model = ChannelEnvironment(self.bs_pos, self.irs_pos, (0,0,0))
         
         self.current_step = 0
@@ -44,39 +48,76 @@ class IRSEnv(gym.Env):
             np.random.uniform(20, self.room_size)
         ])
         
+        # Deterministic smooth trajectory (constant velocity)
+        angle = np.random.uniform(0, 2 * np.pi)
+        speed = np.random.uniform(0.5, 1.5) # meters per step
+        self.ue_velocity = np.array([speed * np.cos(angle), speed * np.sin(angle)])
+        
+        self.current_phases = np.zeros(self.N, dtype=np.float32)
+        self.prev_snr_db = 0.0
+        
         # Reset the environment fading for the new episode
         self.env_model.reset_fading(self.N)
         
         return self._get_obs(), {}
 
     def _get_obs(self):
-        # Normalize (x, y) to [0, 1]
-        return (self.ue_pos / self.room_size).astype(np.float32)
+        d_bs = np.linalg.norm(self.ue_pos - np.array(self.bs_pos[:2])) / self.room_size
+        d_irs = np.linalg.norm(self.ue_pos - np.array(self.irs_pos[:2])) / self.room_size
+        snr_norm = (self.prev_snr_db + 10.0) / 40.0
+        
+        return np.array([
+            self.ue_pos[0] / self.room_size, 
+            self.ue_pos[1] / self.room_size,
+            self.ue_velocity[0] / 2.0,
+            self.ue_velocity[1] / 2.0,
+            d_bs,
+            d_irs,
+            snr_norm
+        ], dtype=np.float32)
 
     def step(self, action):
         self.current_step += 1
         
-        # 1. Map action [-1, 1] to phases [-pi, pi]
-        phases = action * np.pi
-        self.irs_panel.phases = phases
+        # 1. Map action to a phase delta (max pi/4 radians per step)
+        max_delta = np.pi / 4
+        self.current_phases += action * max_delta
+        # Wrap phases to [-pi, pi]
+        self.current_phases = np.angle(np.exp(1j * self.current_phases))
+        self.irs_panel.phases = self.current_phases
         Phi = self.irs_panel.get_reflection_matrix()
         
         # 2. Get Channels
         self.env_model.ue_pos = np.array([self.ue_pos[0], self.ue_pos[1], 1.5])
         G, h_r, h_d = self.env_model.get_channels(self.N)
         
-        # 3. Calculate SNR (Reward)
+        # 3. Calculate True SNR
         gain = np.dot(np.conj(h_r).T, np.dot(Phi, G)) + h_d
-        power_db = 10 * np.log10(np.abs(gain)**2 + 1e-20)
+        power_linear = np.abs(gain)**2
         
-        # Reward is the received power. 
-        # Max theoretical power is around -110dB to -130dB in this setup.
-        # We normalize it for SAC: Shift by +130 and scale down.
-        # For example, -130 dB -> 0, -110 dB -> 1.0
-        reward = (power_db + 150.0) / 50.0
+        # Thermal noise at 28 GHz with 100 MHz bandwidth (-94 dBm = -124 dBW)
+        noise_power_linear = 10**(-12.4)
+        snr_linear = power_linear / noise_power_linear
+        snr_db = 10 * np.log10(snr_linear + 1e-20)
+        self.prev_snr_db = snr_db
         
-        # 4. Simulate User Movement (Random walk)
-        self.ue_pos += np.random.normal(0, 1.0, size=2)
+        # Reward is the SNR. Normalize it for SAC.
+        # Shift by +10 and scale. SNR usually -10 dB to +30 dB in this config.
+        reward = (snr_db + 10.0) / 40.0
+        
+        # Penalty for aggressive phase flipping (Regularization)
+        action_penalty = 0.05 * np.mean(action**2)
+        reward -= action_penalty
+        
+        # 4. Simulate User Movement (Smooth bouncing trajectory)
+        self.ue_pos += self.ue_velocity
+        
+        # Boundary bounce logic
+        if self.ue_pos[0] < 10 or self.ue_pos[0] > self.room_size - 10:
+            self.ue_velocity[0] *= -1
+        if self.ue_pos[1] < 10 or self.ue_pos[1] > self.room_size - 10:
+            self.ue_velocity[1] *= -1
+            
         self.ue_pos = np.clip(self.ue_pos, 10, self.room_size - 10)
         
         done = self.current_step >= self.max_steps
