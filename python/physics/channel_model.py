@@ -75,6 +75,9 @@ class ChannelEnvironment:
         dx = (col - (side_len - 1) / 2) * d_spacing
         dz = (row - (side_len - 1) / 2) * d_spacing
         
+        # For a URA mounted on the XZ wall (Y=0), the elements span the X and Z axes.
+        # The phase differences between elements depend purely on the projection of the direction vector
+        # onto the X and Z axes. The Y movement affects this implicitly by altering the normalized direction vector.
         phase = k * (dx * direction[0] + dz * direction[2])
         return np.exp(-1j * phase).flatten()
 
@@ -83,7 +86,12 @@ class ChannelEnvironment:
         Resets the small-scale fading (NLoS) realizations for the environment.
         Should be called at the beginning of an episode to simulate a static block-fading room.
         """
-        self.h_nlos_bs = (np.random.randn(irs_elements_N) + 1j * np.random.randn(irs_elements_N)) / np.sqrt(2)
+        # The Base Station to IRS link is bolted down in physical reality.
+        # It should NEVER be reset once initialized.
+        if not hasattr(self, 'h_nlos_bs') or len(self.h_nlos_bs) != irs_elements_N:
+            self.h_nlos_bs = (np.random.randn(irs_elements_N) + 1j * np.random.randn(irs_elements_N)) / np.sqrt(2)
+            
+        # The IRS to UE link changes when the room's scattering environment (people, furniture) changes.
         self.h_nlos_ue = (np.random.randn(irs_elements_N) + 1j * np.random.randn(irs_elements_N)) / np.sqrt(2)
         self.h_d_nlos = (np.random.randn() + 1j * np.random.randn()) / np.sqrt(2)
 

@@ -69,9 +69,11 @@ class IRSEnv(gym.Env):
         gain = np.dot(np.conj(h_r).T, np.dot(Phi, G)) + h_d
         power_db = 10 * np.log10(np.abs(gain)**2 + 1e-20)
         
-        # Reward is the received power. We can normalize it slightly to help training.
+        # Reward is the received power. 
         # Max theoretical power is around -110dB to -130dB in this setup.
-        reward = power_db
+        # We normalize it for SAC: Shift by +130 and scale down.
+        # For example, -130 dB -> 0, -110 dB -> 1.0
+        reward = (power_db + 150.0) / 50.0
         
         # 4. Simulate User Movement (Random walk)
         self.ue_pos += np.random.normal(0, 1.0, size=2)
