@@ -11,7 +11,7 @@ def main():
     print("--- IRS-Sim DRL Training (SAC) ---")
     
     # 1. Initialize Environment and Agent
-    env = IRSEnv(room_size=100.0, num_elements_x=16, num_elements_y=16)
+    env = IRSEnv(room_size=100.0, num_elements_x=8, num_elements_y=8)
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     

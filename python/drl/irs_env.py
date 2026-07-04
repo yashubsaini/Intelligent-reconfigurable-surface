@@ -13,7 +13,7 @@ class IRSEnv(gym.Env):
     """
     Custom Environment for optimizing IRS phases using DRL.
     """
-    def __init__(self, room_size=100.0, num_elements_x=16, num_elements_y=16):
+    def __init__(self, room_size=100.0, num_elements_x=8, num_elements_y=8):
         super(IRSEnv, self).__init__()
         
         self.room_size = room_size

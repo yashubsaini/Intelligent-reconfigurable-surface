@@ -32,8 +32,8 @@ def main():
     Z_rand = np.zeros_like(X)
     Z_opt = np.zeros_like(X)
     
-    # Use a larger 16x16 array (256 elements) for a much sharper "spotlight" beam
-    irs_panel = IRSArray(16, 16)
+    # Use an 8x8 array (64 elements) for a sharper "spotlight" beam
+    irs_panel = IRSArray(8, 8)
     
     # 1. Prepare Random Phase Matrix
     irs_panel.set_random_phases()

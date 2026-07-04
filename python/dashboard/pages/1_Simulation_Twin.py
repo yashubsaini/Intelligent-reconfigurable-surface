@@ -26,7 +26,7 @@ optimization_mode = st.sidebar.radio(
 
 bs_pos = (0, 50, 5)     
 irs_pos = (50, 0, 3)    
-irs_panel = IRSArray(16, 16)
+irs_panel = IRSArray(8, 8)
 
 @st.cache_data
 def get_grid_channels():

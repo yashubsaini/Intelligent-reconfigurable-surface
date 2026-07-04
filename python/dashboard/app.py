@@ -57,7 +57,7 @@ Welcome to the **IRS-Sim Research Platform**. This dashboard bridges the gap bet
 ### 🔬 Architecture Overview
 This platform is split into two primary research modules, accessible via the sidebar:
 
-1. **Simulation Twin**: A purely mathematical and AI-driven environment. Watch in real-time as a PyTorch Deep Q-Network dynamically alters the phase shifts of a 256-element IRS to steer a 28 GHz signal around physical blockages.
+1. **Simulation Twin**: A purely mathematical and AI-driven environment. Watch in real-time as a PyTorch Deep Q-Network dynamically alters the phase shifts of a 64-element IRS to steer a 28 GHz signal around physical blockages.
 2. **Lab Experiments**: The hardware interface. Upload raw `.csv` telemetry data from Software Defined Radios (SDRs) and the physical IRS board to validate the simulation models against real-world scattering and hardware quantization loss.
 
 ---
