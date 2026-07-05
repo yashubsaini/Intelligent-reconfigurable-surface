@@ -18,7 +18,8 @@ def main():
     agent = SACAgent(state_dim=state_dim, action_dim=action_dim)
     
     num_episodes = 1000
-    batch_size = 64
+    batch_size = 128
+    learning_starts = 5000
     
     rewards_history = []
     
@@ -29,6 +30,8 @@ def main():
         state, _ = env.reset()
         episode_reward = 0
         done = False
+        policy_loss = 0.0
+        qf_loss = 0.0
         
         while not done:
             # SAC inherently explores during training via stochastic policy
@@ -39,14 +42,21 @@ def main():
             agent.memory.push(state, action, reward, next_state, done)
             
             # Train the network
-            if len(agent.memory) > batch_size:
-                policy_loss, qf_loss = agent.train(batch_size)
+            if len(agent.memory) > learning_starts:
+                for i in range(2):
+                    policy_loss, qf_loss = agent.train(batch_size)
                 
             state = next_state
             episode_reward += reward
             
         rewards_history.append(episode_reward)
-        print(f"Episode {episode+1}/{num_episodes} | Total Reward (Average SNR): {episode_reward:.2f} dB")
+        if (episode + 1) % 10 == 0:
+            print(
+                f"Episode {episode+1:4d}/{num_episodes} | "
+                f"Reward: {episode_reward:7.3f} | "
+                f"Actor Loss: {policy_loss:8.4f} | "
+                f"Critic Loss: {qf_loss:8.4f}"
+            )
         
     print("Training Complete!")
     
@@ -56,11 +66,34 @@ def main():
     print(f"Saved SAC actor weights to: {save_path}")
     
     # Plot Learning Curve
-    plt.figure(figsize=(10,5))
-    plt.plot(rewards_history, label='Episode Reward (SNR)', color='cyan')
-    plt.title('SAC Agent Learning Curve (IRS Beamforming)')
-    plt.xlabel('Episode')
-    plt.ylabel('Reward (dB)')
+    window = 20
+    plt.figure(figsize=(10, 5))
+
+    # Raw rewards
+    plt.plot(
+        rewards_history,
+        alpha=0.35,
+        color="skyblue",
+        label="Episode Reward"
+    )
+
+    # Moving average
+    if len(rewards_history) >= window:
+        moving_avg = np.convolve(
+            rewards_history,
+            np.ones(window) / window,
+            mode="valid"
+        )
+        plt.plot(
+            moving_avg,
+            color="blue",
+            linewidth=2,
+            label=f"{window}-Episode Moving Average"
+        )
+
+    plt.title("SAC Agent Learning Curve (IRS Beamforming)")
+    plt.xlabel("Episode")
+    plt.ylabel("Episode Reward")
     plt.grid(True, alpha=0.3)
     plt.legend()
     

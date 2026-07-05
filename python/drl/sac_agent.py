@@ -26,7 +26,7 @@ class ReplayBuffer:
         return len(self.buffer)
 
 class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_dim=256):
+    def __init__(self, state_dim, action_dim, hidden_dim=512):
         super(Actor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
@@ -58,7 +58,7 @@ class Actor(nn.Module):
         return action, log_prob, torch.tanh(mu)
 
 class Critic(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_dim=256):
+    def __init__(self, state_dim, action_dim, hidden_dim=512):
         super(Critic, self).__init__()
         # Q1 architecture
         self.q1 = nn.Sequential(
@@ -110,7 +110,7 @@ class SACAgent:
                 action, _, _ = self.actor.sample(state)
         return action.cpu().numpy()[0]
         
-    def train(self, batch_size=64):
+    def train(self, batch_size=128):
         if len(self.memory) < batch_size:
             return 0.0, 0.0
             
@@ -135,6 +135,7 @@ class SACAgent:
         
         self.critic_optimizer.zero_grad()
         qf_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)  # Gradient clipping
         self.critic_optimizer.step()
         
         pi, log_pi, _ = self.actor.sample(state)
@@ -145,6 +146,7 @@ class SACAgent:
         
         self.actor_optimizer.zero_grad()
         policy_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)  # Gradient clipping
         self.actor_optimizer.step()
         
         for target_param, param in zip(self.critic_target.parameters(), self.critic.parameters()):
