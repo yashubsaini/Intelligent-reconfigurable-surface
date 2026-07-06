@@ -6,107 +6,119 @@ import os
 
 # Add parent directory to path to import physics models
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from physics.channel_model import ChannelEnvironment
+from physics.simris_channel import SimRISChannel
 from physics.irs_array import IRSArray
 
 class IRSEnv(gym.Env):
     """
-    Custom Environment for optimizing IRS phases using DRL.
+    Custom Environment for optimizing IRS phases using DRL with SimRIS channel physics.
     """
-    def __init__(self, room_size=100.0, num_elements_x=8, num_elements_y=8):
+    def __init__(self, room_size=75.0, num_elements_x=8, num_elements_y=8):
         super(IRSEnv, self).__init__()
         
         self.room_size = room_size
-        self.bs_pos = (0, room_size/2, 5)
-        self.irs_pos = (room_size/2, 0, 3)
+        self.bs_pos = (0, room_size/2, 5) # Tx
+        self.irs_pos = (room_size/2, 0, 3) # RIS
+        
+        # Fixed user position as requested: "don't move the user"
+        self.ue_pos = np.array([room_size * 0.7, room_size * 0.6, 1.5]) 
+        
         self.irs_panel = IRSArray(num_elements_x, num_elements_y)
         self.N = self.irs_panel.N
         
-        # State: [ue_x, ue_y, vel_x, vel_y, d_bs, d_irs, prev_snr, mean_phase, phase_std, channel_gain, channel_phase]
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(11,), dtype=np.float32)
+        # State: [ue_x, ue_y, d_bs, d_irs, prev_snr, mean_phase, phase_std, channel_gain, channel_phase, D_real, D_imag] 
+        # + [N cascaded channel real parts] + [N cascaded channel imaginary parts] = 11 + 2*N dimensions
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(11 + 2*self.N,), dtype=np.float32)
         
         # Action: Continuous delta-phases for each element in range [-1, 1]
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.N,), dtype=np.float32)
         
-        self.ue_pos = None
-        self.ue_velocity = None
         self.current_phases = np.zeros(self.N, dtype=np.float32)
         self.prev_snr_db = 0.0
         self.channel_gain = 0.0
         self.channel_phase = 0.0
+        self.cascaded_channel = np.ones(self.N, dtype=np.complex128)
+        self.direct_channel = 0.0j
         
-        self.env_model = ChannelEnvironment(self.bs_pos, self.irs_pos, (0,0,0))
+        self.env_model = SimRISChannel(environment=1, N=self.N) # Indoor Hotspot
         
         self.current_step = 0
-        self.max_steps = 100 # Steps per episode (UE moving trajectory)
+        self.max_steps = 100 
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.current_step = 0
         
-        # Random starting position for UE
-        self.ue_pos = np.array([
-            np.random.uniform(20, self.room_size), 
-            np.random.uniform(20, self.room_size)
-        ])
-        
-        # Deterministic smooth trajectory (constant velocity)
-        angle = np.random.uniform(0, 2 * np.pi)
-        speed = np.random.uniform(0.5, 1.5) # meters per step
-        self.ue_velocity = np.array([speed * np.cos(angle), speed * np.sin(angle)])
-        
         self.current_phases = np.zeros(self.N, dtype=np.float32)
         self.prev_snr_db = 0.0
         self.channel_gain = 0.0
         self.channel_phase = 0.0
         
-        # Reset the environment fading for the new episode
-        self.env_model.reset_fading(self.N)
+        # SimRIS channels
+        H, G, D = self.env_model.generate_channel(self.bs_pos, self.ue_pos, self.irs_pos)
+        
+        # H is (N, 1) Tx->RIS, G is (N, 1) RIS->Rx. Cascaded channel for each element is H_n * G_n
+        self.cascaded_channel = (H.flatten() * G.flatten())
+        self.direct_channel = D[0, 0]
         
         return self._get_obs(), {}
 
     def _get_obs(self):
-        d_bs = np.linalg.norm(self.ue_pos - np.array(self.bs_pos[:2])) / self.room_size
-        d_irs = np.linalg.norm(self.ue_pos - np.array(self.irs_pos[:2])) / self.room_size
-        snr_norm = np.clip((self.prev_snr_db + 10.0) / 40.0, 0.0, 1.0)
-        mean_phase = np.mean(self.current_phases) / np.pi  # Normalize mean phase to [-1, 1]
-        phase_std = np.std(self.current_phases) / np.pi  # Normalize std deviation to [0, 1]
+        d_bs = np.linalg.norm(self.ue_pos[:2] - np.array(self.bs_pos[:2])) / self.room_size
+        d_irs = np.linalg.norm(self.ue_pos[:2] - np.array(self.irs_pos[:2])) / self.room_size
+        snr_norm = np.clip((self.prev_snr_db + 10.0) / 100.0, 0.0, 1.0)
+        mean_phase = np.mean(self.current_phases) / np.pi 
+        phase_std = np.std(self.current_phases) / np.pi 
         
-        return np.array([
+        channel_gain_db = 10 * np.log10(self.channel_gain + 1e-20)
+        channel_gain_norm = np.clip((channel_gain_db + 120) / 60.0, 0.0, 1.0)
+        
+        # Scale cascaded channel up so it's not tiny values
+        # SimRIS gives very small path loss (e.g. 1e-6 to 1e-8)
+        scale_factor = 1e6
+        cascaded_real = np.real(self.cascaded_channel * scale_factor).astype(np.float32)
+        cascaded_imag = np.imag(self.cascaded_channel * scale_factor).astype(np.float32)
+        
+        scalar_obs = np.array([
             self.ue_pos[0] / self.room_size, 
             self.ue_pos[1] / self.room_size,
-            self.ue_velocity[0] / 2.0,
-            self.ue_velocity[1] / 2.0,
             d_bs,
             d_irs,
             snr_norm,
             mean_phase,
             phase_std,
-            self.channel_gain,
-            self.channel_phase
+            channel_gain_norm,
+            self.channel_phase,
+            np.real(self.direct_channel * scale_factor),
+            np.imag(self.direct_channel * scale_factor)
         ], dtype=np.float32)
+        
+        return np.concatenate([scalar_obs, cascaded_real, cascaded_imag])
 
     def step(self, action):
         self.current_step += 1
         
-        # 1. Map action to a phase delta (max pi/4 radians per step)
-        max_delta = np.pi / 4
-        self.current_phases += action * max_delta
-        # Wrap phases to [-pi, pi] efficiently without complex exponentials
-        self.current_phases = (self.current_phases + np.pi) % (2 * np.pi) - np.pi
+        # 1. Map action directly to absolute phase [-pi, pi]
+        self.current_phases = action * np.pi
         self.irs_panel.phases = self.current_phases
-        Phi = self.irs_panel.get_reflection_matrix()
+        Phi = self.irs_panel.get_reflection_matrix() # Diagonal matrix of exp(j * phase)
         
-        # 2. Get Channels
-        self.env_model.ue_pos = np.array([self.ue_pos[0], self.ue_pos[1], 1.5])
-        G, h_r, h_d = self.env_model.get_channels(self.N)
-        effective_channel = h_r * G
-        self.channel_gain = np.mean(np.abs(effective_channel))
-        self.channel_phase = np.angle(np.sum(effective_channel)) / np.pi
+        # 2. Get Channels (Since UE doesn't move, we cache this from reset)
+        # H, G, D = self.env_model.generate_channel(self.bs_pos, self.ue_pos, self.irs_pos)
+        # self.cascaded_channel = (H.flatten() * G.flatten())
+        # self.direct_channel = D[0, 0]
         
-        # 3. Calculate True SNR
-        gain = np.dot(np.conj(h_r).T, np.dot(Phi, G)) + h_d
-        power_linear = np.abs(gain)**2
+        self.channel_gain = np.mean(np.abs(self.cascaded_channel))
+        self.channel_phase = np.angle(np.sum(self.cascaded_channel)) / np.pi
+        
+        # 3. Calculate True SNR (Assume 100W Base Station Transmit Power)
+        # y = (G^T \Phi H + D) x + n
+        # Since we use cascaded_channel directly, the gain is sum(cascaded * Phi)
+        phi_diag = np.diag(Phi)
+        gain = np.sum(self.cascaded_channel * phi_diag) + self.direct_channel
+        
+        transmit_power_linear = 100.0  # 100 Watts
+        power_linear = transmit_power_linear * (np.abs(gain)**2)
         
         # Thermal noise at 28 GHz with 100 MHz bandwidth (-94 dBm = -124 dBW)
         noise_power_linear = 10**(-12.4)
@@ -114,28 +126,17 @@ class IRSEnv(gym.Env):
         snr_db = 10 * np.log10(snr_linear + 1e-20)
         
         # Reward Formulation
-        snr_improvement = snr_db - self.prev_snr_db
-        reward = 0.3 * np.tanh(snr_improvement / 3.0)
-        reward += 0.7 * np.clip((snr_db + 10.0) / 40.0, 0.0, 1.0)
+        reward = snr_db / 20.0
         
-        # Penalty for aggressive phase flipping (Regularization)
+        # Penalty for aggressive phase flipping
         action_penalty = 0.01 * np.mean(action**2)
         reward -= action_penalty
         
         self.prev_snr_db = snr_db
         
-        # 4. Simulate User Movement (Smooth bouncing trajectory)
-        self.ue_pos += self.ue_velocity
-        
-        # Boundary bounce logic
-        if self.ue_pos[0] < 10 or self.ue_pos[0] > self.room_size - 10:
-            self.ue_velocity[0] *= -1
-        if self.ue_pos[1] < 10 or self.ue_pos[1] > self.room_size - 10:
-            self.ue_velocity[1] *= -1
-            
-        self.ue_pos = np.clip(self.ue_pos, 10, self.room_size - 10)
+        # 4. UE does not move (static position)
         
         done = self.current_step >= self.max_steps
         truncated = False
         
-        return self._get_obs(), reward, done, truncated, {}
+        return self._get_obs(), float(reward), done, truncated, {"snr_db": float(snr_db)}
