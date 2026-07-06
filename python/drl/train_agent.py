@@ -19,10 +19,16 @@ def main():
     
     agent = TD3Agent(state_dim=state_dim, action_dim=action_dim)
     
+<<<<<<< HEAD
     num_episodes = 500
     batch_size = 128
     learning_starts = 1000
     
+=======
+    num_episodes = 1000
+    batch_size = 128
+    learning_starts = 5000
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
     rewards_history = []
     eval_rewards_history = []
     eval_episodes = []
@@ -39,6 +45,8 @@ def main():
         episode_reward = 0
         episode_snr = 0.0
         done = False
+        policy_loss = 0.0
+        qf_loss = 0.0
         
         total_policy_loss = 0.0
         total_qf_loss = 0.0
@@ -60,26 +68,38 @@ def main():
             agent.memory.push(state, action, reward, next_state, done)
             
             # Train the network
+<<<<<<< HEAD
             if len(agent.memory) > learning_starts:
                 for i in range(2):
                     p_loss, q_loss = agent.train(batch_size)
                     total_policy_loss += p_loss
                     total_qf_loss += q_loss
                     train_steps += 1
+=======
+            if len(agent.memory) > learning_starts> batch_size:
+                for i in range(2):
+                    policy_loss, qf_loss = agent.train(batch_size)
+
+               
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
                 
             state = next_state
             episode_reward += reward
             
         rewards_history.append(episode_reward)
+<<<<<<< HEAD
         
         avg_policy_loss = total_policy_loss / max(1, train_steps)
         avg_qf_loss = total_qf_loss / max(1, train_steps)
         
         avg_snr = episode_snr / max(1, env.max_steps)
+=======
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
         if (episode + 1) % 10 == 0:
             print(
                 f"Episode {episode+1:4d}/{num_episodes} | "
                 f"Reward: {episode_reward:7.3f} | "
+<<<<<<< HEAD
                 f"Avg SNR: {avg_snr:7.3f} dB | "
                 f"Noise: {noise:.2f} | "
                 f"Actor Loss: {avg_policy_loss:8.4f} | "
@@ -98,6 +118,11 @@ def main():
                 eval_reward += r
             eval_rewards_history.append(eval_reward)
             eval_episodes.append(episode)
+=======
+                f"Actor Loss: {policy_loss:8.4f} | "
+                f"Critic Loss: {qf_loss:8.4f}"
+            )
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
         
     print("Training Complete!")
     
@@ -131,6 +156,7 @@ def main():
             linewidth=2,
             label=f"{window}-Episode Moving Average"
         )
+<<<<<<< HEAD
         
     # Greedy Eval Curve
     if len(eval_episodes) > 0:
@@ -144,14 +170,21 @@ def main():
         )
 
     plt.title("TD3 Agent Learning Curve (IRS Beamforming)")
+=======
+
+    plt.title("SAC Agent Learning Curve (IRS Beamforming)")
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
     plt.xlabel("Episode")
     plt.ylabel("Episode Reward")
     plt.grid(True, alpha=0.3)
     plt.legend()
-    
-    plot_path = os.path.join(os.path.dirname(__file__), 'learning_curve.png')
+
+    plot_path = os.path.join(os.path.dirname(__file__), "learning_curve.png")
     plt.savefig(plot_path)
     print(f"Saved learning curve plot to: {plot_path}")
 
+
 if __name__ == "__main__":
     main()
+
+

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # IRS-5G-LAB 📡
 
 **Intelligent Reconfigurable Surface Simulator for 5G/6G Networks**
@@ -52,3 +53,6 @@ IRS-5G-LAB/
 ## 🔬 Research Goals
 
 This software stack was built to transition a purely mathematical concept into physical reality. By simulating the exact array factor and path loss physics of a 28 GHz mmWave setup, researchers can establish a theoretical ceiling for signal enhancement. When the physical IRS array is tested in the lab, the discrepancies between the simulated heatmap and the collected SDR data provide critical insights into hardware quantization loss, imperfect scattering, and RF leakage.
+=======
+# Intelligent-reconfigurable-surface
+>>>>>>> 353bb8a8af08f6fe25e25b3b4773f40de2ffa384

@@ -26,7 +26,11 @@ class ReplayBuffer:
         return len(self.buffer)
 
 class Actor(nn.Module):
+<<<<<<< HEAD
     def __init__(self, state_dim, action_dim, hidden_dim=512):
+=======
+    def __init__(self, state_dim, action_dim, hidden_dim= 512):
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
         super(Actor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
@@ -58,7 +62,11 @@ class Actor(nn.Module):
         return action, log_prob, torch.tanh(mu)
 
 class Critic(nn.Module):
+<<<<<<< HEAD
     def __init__(self, state_dim, action_dim, hidden_dim=512):
+=======
+    def __init__(self, state_dim, action_dim, hidden_dim= 512):
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
         super(Critic, self).__init__()
         # Q1 architecture
         self.q1 = nn.Sequential(

@@ -26,20 +26,31 @@ class IRSEnv(gym.Env):
         self.irs_panel = IRSArray(num_elements_x, num_elements_y)
         self.N = self.irs_panel.N
         
+<<<<<<< HEAD
         # State: [ue_x, ue_y, d_bs, d_irs, prev_snr, mean_phase, phase_std, channel_gain, channel_phase, D_real, D_imag] 
         # + [N cascaded channel real parts] + [N cascaded channel imaginary parts] = 11 + 2*N dimensions
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(11 + 2*self.N,), dtype=np.float32)
+=======
+        # State: [ue_x, ue_y, vel_x, vel_y, d_bs, d_irs, prev_snr]
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(11,), dtype=np.float32)
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
         
         # Action: Continuous delta-phases for each element in range [-1, 1]
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.N,), dtype=np.float32)
         
         self.current_phases = np.zeros(self.N, dtype=np.float32)
+<<<<<<< HEAD
         self.prev_snr_db = 0.0
         self.channel_gain = 0.0
         self.channel_phase = 0.0
         self.cascaded_channel = np.ones(self.N, dtype=np.complex128)
         self.direct_channel = 0+0j 
 
+=======
+        self.prev_snr_db = -10.0
+        self.channel_gain = 0.0
+        self.channel_phase = 0.0
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
         
         self.env_model = SimRISChannel(environment=1, N=self.N) # Indoor Hotspot
         
@@ -82,12 +93,19 @@ class IRSEnv(gym.Env):
         
         return self._get_obs(), {}
 
+<<<<<<< HEAD
     def _get_obs(self):
         d_bs = np.linalg.norm(self.ue_pos[:2] - np.array(self.bs_pos[:2])) / self.room_size
         d_irs = np.linalg.norm(self.ue_pos[:2] - np.array(self.irs_pos[:2])) / self.room_size
         snr_norm = np.clip((self.prev_snr_db + 10.0) / 100.0, 0.0, 1.0)
         mean_phase = np.mean(self.current_phases) / np.pi 
         phase_std = np.std(self.current_phases) / np.pi 
+=======
+    '''def _get_obs(self):
+        d_bs = np.linalg.norm(self.ue_pos - np.array(self.bs_pos[:2])) / self.room_size
+        d_irs = np.linalg.norm(self.ue_pos - np.array(self.irs_pos[:2])) / self.room_size
+        snr_norm = (self.prev_snr_db + 10.0) / 40.0
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
         
         channel_gain_db = 10 * np.log10(self.channel_gain + 1e-20)
         channel_gain_norm = np.clip((channel_gain_db + 120) / 60.0, 0.0, 1.0)
@@ -103,6 +121,7 @@ class IRSEnv(gym.Env):
             self.ue_pos[1] / self.room_size,
             d_bs,
             d_irs,
+<<<<<<< HEAD
             snr_norm,
             mean_phase,
             phase_std,
@@ -113,7 +132,30 @@ class IRSEnv(gym.Env):
         ], dtype=np.float32)
         
         return np.concatenate([scalar_obs, cascaded_real, cascaded_imag])
+=======
+            snr_norm
+        ], dtype=np.float32)'''
+    def _get_obs(self):
+        d_bs = np.linalg.norm(self.ue_pos - np.array(self.bs_pos[:2])) / self.room_size
+        d_irs = np.linalg.norm(self.ue_pos - np.array(self.irs_pos[:2])) / self.room_size
+        snr_norm = np.clip((self.prev_snr_db + 10.0) / 40.0, 0.0, 1.0)
+        mean_phase = np.mean(self.current_phases) / np.pi  # Normalize mean phase to [-1, 1]
+        phase_std = np.std(self.current_phases) / np.pi  # Normalize std deviation to [0, 1]
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
 
+        return np.array([
+            self.ue_pos[0] / self.room_size,
+            self.ue_pos[1] / self.room_size,
+            self.ue_velocity[0] / 2.0,
+            self.ue_velocity[1] / 2.0,
+            d_bs,
+            d_irs,
+            snr_norm,
+            mean_phase,
+            phase_std, 
+            self.channel_gain, 
+            self.channel_phase       
+        ], dtype=np.float32)
     def step(self, action):
         self.current_step += 1
         
@@ -122,10 +164,19 @@ class IRSEnv(gym.Env):
         self.irs_panel.phases = self.current_phases
         Phi = self.irs_panel.get_reflection_matrix() # Diagonal matrix of exp(j * phase)
         
+<<<<<<< HEAD
         # 2. Get Channels (Since UE doesn't move, we cache this from reset)
         # H, G, D = self.env_model.generate_channel(self.bs_pos, self.ue_pos, self.irs_pos)
         # self.cascaded_channel = (H.flatten() * G.flatten())
         # self.direct_channel = D[0, 0]
+=======
+        # 2. Get Channels
+        self.env_model.ue_pos = np.array([self.ue_pos[0], self.ue_pos[1], 1.5])
+        G, h_r, h_d = self.env_model.get_channels(self.N)
+        effective_channel = h_r*G
+        self.channel_gain = np.mean(np.abs(effective_channel))
+        self.channel_phase = np.angle(np.sum(effective_channel)) / np.pi
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
         
         self.channel_gain = np.mean(np.abs(self.cascaded_channel))
         self.channel_phase = np.angle(np.sum(self.cascaded_channel)) / np.pi
@@ -142,6 +193,7 @@ class IRSEnv(gym.Env):
         noise_power_linear = 10**(-12.4)
         snr_linear = power_linear / noise_power_linear
         snr_db = 10 * np.log10(snr_linear + 1e-20)
+<<<<<<< HEAD
 
         if self.current_step == 1:
             gain_zero = np.sum(self.cascaded_channel) + self.direct_channel
@@ -162,6 +214,26 @@ class IRSEnv(gym.Env):
         reward -= action_penalty
         
         self.prev_snr_db = snr_db
+=======
+        'self.prev_snr_db = snr_db'
+        
+        # Reward is the SNR. Normalize it for SAC.
+        # Shift by +10 and scale. SNR usually -10 dB to +30 dB in this config.
+        '''reward = (snr_db + 10.0) / 40.0
+      
+        # Penalty for aggressive phase flipping (Regularization)
+        action_penalty = 0.05 * np.mean(action**2)
+        reward -= action_penalty'''
+        snr_improvement = snr_db - self.prev_snr_db
+        reward = 0.3 * np.tanh(snr_improvement / 3.0)
+        reward += 0.7 * np.clip((snr_db + 10.0) / 40.0, 0.0, 1.0)
+        action_penalty = 0.01 * np.mean(action**2)
+
+        reward -= action_penalty
+        self.prev_snr_db = snr_db  # Update previous SNR after reward calculation
+        # 4. Simulate User Movement (Smooth bouncing trajectory)
+        self.ue_pos += self.ue_velocity
+>>>>>>> ad6112cd528926f496b014c827ab0a734b0bc7f0
         
         # 4. UE does not move (static position)
         
