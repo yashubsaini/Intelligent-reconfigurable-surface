@@ -38,28 +38,47 @@ class IRSEnv(gym.Env):
         self.channel_gain = 0.0
         self.channel_phase = 0.0
         self.cascaded_channel = np.ones(self.N, dtype=np.complex128)
-        self.direct_channel = 0.0j
+        self.direct_channel = 0+0j 
+
         
         self.env_model = SimRISChannel(environment=1, N=self.N) # Indoor Hotspot
         
         self.current_step = 0
-        self.max_steps = 100 
+        self.max_steps = 50
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.current_step = 0
+
         
         self.current_phases = np.zeros(self.N, dtype=np.float32)
         self.prev_snr_db = 0.0
         self.channel_gain = 0.0
         self.channel_phase = 0.0
         
-        # SimRIS channels
-        H, G, D = self.env_model.generate_channel(self.bs_pos, self.ue_pos, self.irs_pos)
+        # SimRIS channels (fixed across episodes)
+        if not hasattr(self, "cached_channel"):
+            H, G, D = self.env_model.generate_channel(self.bs_pos, self.ue_pos, self.irs_pos)
+            self.cached_channel = (H, G, D)
+        H, G, D = self.cached_channel
+        # H, G, D = self.env_model.generate_channel(self.bs_pos, self.ue_pos, self.irs_pos)
+        print("\n========== CHANNEL DEBUG ==========")
+        print("||H||        =", np.linalg.norm(H))
+        print("||G||        =", np.linalg.norm(G))
+        print("|D|          =", np.abs(D[0, 0]))
+        print("||H*G||      =", np.linalg.norm(H.flatten() * G.flatten()))
+        print("|sum(H*G)|   =", np.abs(np.sum(H.flatten() * G.flatten())))
+        print("=======================================\n")
+
+        theta_opt=np.angle(self.cascaded_channel)
+        phi_opt=np.exp(1j*theta_opt)
+
+        gain_opt= np.sum(self.cascaded_channel * phi_opt) + self.direct_channel
+        snr_opt = np.sum(100 * np.abs(gain_opt)**2 / 10**(-12.4) + 1e-20)
         
         # H is (N, 1) Tx->RIS, G is (N, 1) RIS->Rx. Cascaded channel for each element is H_n * G_n
         self.cascaded_channel = (H.flatten() * G.flatten())
-        self.direct_channel = D[0, 0]
+        self.direct_channel = 0+0j
         
         return self._get_obs(), {}
 
@@ -116,7 +135,6 @@ class IRSEnv(gym.Env):
         # Since we use cascaded_channel directly, the gain is sum(cascaded * Phi)
         phi_diag = np.diag(Phi)
         gain = np.sum(self.cascaded_channel * phi_diag) + self.direct_channel
-        
         transmit_power_linear = 100.0  # 100 Watts
         power_linear = transmit_power_linear * (np.abs(gain)**2)
         
@@ -124,6 +142,17 @@ class IRSEnv(gym.Env):
         noise_power_linear = 10**(-12.4)
         snr_linear = power_linear / noise_power_linear
         snr_db = 10 * np.log10(snr_linear + 1e-20)
+
+        if self.current_step == 1:
+            gain_zero = np.sum(self.cascaded_channel) + self.direct_channel
+            snr_zero = 10 * np.log10(100 * np.abs(gain_zero)**2 / noise_power_linear + 1e-20)
+            random_phi = np.exp(1j * np.random.uniform(-np.pi, np.pi, self.N))
+            gain_random = np.sum(self.cascaded_channel * random_phi) + self.direct_channel
+            snr_random = 10 * np.log10(100 * np.abs(gain_random)**2 / noise_power_linear + 1e-20)
+            
+            print(f"Zero SNR   : {snr_zero:.2f} dB")
+            print(f"Random SNR : {snr_random:.2f} dB")
+            print(f"Agent SNR  : {snr_db:.2f} dB")
         
         # Reward Formulation
         reward = snr_db / 20.0

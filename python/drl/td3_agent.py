@@ -50,7 +50,27 @@ class Actor(nn.Module):
             nn.Linear(hidden_dim, action_dim),
             nn.Tanh()
         )
-        
+        # self.net = nn.Sequential(
+        #     nn.Linear(state_dim, hidden_dim),
+        #     nn.LayerNorm(hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, hidden_dim),
+        #     nn.LayerNorm(hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, action_dim),
+        #     nn.Tanh()
+        # )
+        # self.apply(self._init_weights)
+
+    # def _init_weights(self, module):
+    #     if isinstance(module, nn.Linear):
+    #         nn.init.xavier_uniform_(module.weight)
+    #         if module.bias is not None:
+    #             nn.init.zeros_(module.bias)
+    #     elif isinstance(module, nn.LayerNorm):
+    #         nn.init.ones_(module.weight)
+    #         nn.init.zeros_(module.bias)
+
     def forward(self, state):
         return self.net(state)
 
@@ -73,6 +93,34 @@ class Critic(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, 1)
         )
+        # self.q1 = nn.Sequential(
+        #     nn.Linear(state_dim + action_dim, hidden_dim),
+        #     nn.LayerNorm(hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, hidden_dim),
+        #     nn.LayerNorm(hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, 1)
+        # )
+        # self.q2 = nn.Sequential(
+        #     nn.Linear(state_dim + action_dim, hidden_dim),
+        #     nn.LayerNorm(hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, hidden_dim),
+        #     nn.LayerNorm(hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, 1)
+        # )
+        # self.apply(self._init_weights)
+
+    # def _init_weights(self, module):
+    #     if isinstance(module, nn.Linear):
+    #         nn.init.xavier_uniform_(module.weight)
+    #         if module.bias is not None:
+    #             nn.init.zeros_(module.bias)
+    #     elif isinstance(module, nn.LayerNorm):
+    #         nn.init.ones_(module.weight)
+    #         nn.init.zeros_(module.bias)
 
     def forward(self, state, action):
         sa = torch.cat([state, action], 1)
@@ -84,15 +132,19 @@ class Critic(nn.Module):
 
 class TD3Agent:
     def __init__(
-        self, 
-        state_dim, 
-        action_dim, 
-        lr=3e-4, 
-        gamma=0.99, 
-        tau=0.005, 
-        policy_noise=0.2, 
-        noise_clip=0.5, 
-        policy_freq=2, 
+        self,
+        state_dim,
+        action_dim,
+        lr=3e-4,
+        # actor_lr=None,
+        # critic_lr=None,
+        gamma=0.99,
+        tau=0.005,
+        policy_noise=0.2,
+        noise_clip=0.5,
+        policy_freq=2,
+        # hidden_dim=256,
+        # replay_buffer_capacity=300000,
         device='cpu'
     ):
         self.gamma = gamma
@@ -102,6 +154,12 @@ class TD3Agent:
         self.policy_freq = policy_freq
         self.device = torch.device(device)
         self.total_it = 0
+        # self.start_timesteps = 10000
+
+        # if actor_lr is None:
+        #     actor_lr = 1e-4
+        # if critic_lr is None:
+        #     critic_lr = lr
         
         self.actor = Actor(state_dim, action_dim).to(self.device)
         self.actor_target = Actor(state_dim, action_dim).to(self.device)

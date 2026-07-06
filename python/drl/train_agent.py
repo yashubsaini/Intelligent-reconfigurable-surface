@@ -19,7 +19,7 @@ def main():
     
     agent = TD3Agent(state_dim=state_dim, action_dim=action_dim)
     
-    num_episodes = 250
+    num_episodes = 500
     batch_size = 128
     learning_starts = 1000
     
